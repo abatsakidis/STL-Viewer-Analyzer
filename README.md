@@ -59,6 +59,10 @@ python3 -m http.server
     ES Modules (JavaScript)
 
     HTML5 / CSS
+	
+## 🔍 Screenshot
+
+![App Screenshot](screenshot/screen.jpg)
 
 ## ✅ Άδεια
 
