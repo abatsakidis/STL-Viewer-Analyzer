@@ -97,12 +97,10 @@
 
   <div id="viewer"></div>
 
-  <!-- THREE.js modules και loaders από CDN ως ES modules -->
   <script type="module">
-	import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-	import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-	import { STLLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/STLLoader.js';
-
+    import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+    import { STLLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/STLLoader.js';
 
     const viewer = document.getElementById('viewer');
     const fileInput = document.getElementById('stlFile');
@@ -130,12 +128,17 @@
       renderer.setSize(viewer.clientWidth, viewer.clientHeight);
       viewer.appendChild(renderer.domElement);
 
-      const light = new THREE.DirectionalLight(0xffffff, 1);
-      light.position.set(1, 1, 1).normalize();
-      scene.add(light);
-      scene.add(new THREE.AmbientLight(0x404040));
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+      directionalLight.position.set(1, 1, 1).normalize();
+      scene.add(directionalLight);
+
+      const ambientLight = new THREE.AmbientLight(0x404040);
+      scene.add(ambientLight);
 
       controls = new OrbitControls(camera, renderer.domElement);
+
+      window.addEventListener('resize', onWindowResize);
+
       animate();
     }
 
@@ -145,92 +148,101 @@
       renderer.render(scene, camera);
     }
 
-    window.addEventListener('resize', () => {
+    function onWindowResize() {
       camera.aspect = viewer.clientWidth / viewer.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(viewer.clientWidth, viewer.clientHeight);
-    });
+    }
 
-    fileInput.addEventListener('change', async (event) => {
+    fileInput.addEventListener('change', (event) => {
       const file = event.target.files[0];
       if (!file) return;
 
-      try {
-        fileNameLabel.textContent = file.name;
-        exportBtn.disabled = true;
+      fileNameLabel.textContent = file.name;
+      exportBtn.disabled = true;
 
-        const reader = new FileReader();
-        reader.onload = function (e) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        try {
           const loader = new STLLoader();
           const geometry = loader.parse(e.target.result);
 
-          if (mesh) scene.remove(mesh);
+          if (mesh) {
+            scene.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+            mesh = null;
+          }
 
           const material = new THREE.MeshStandardMaterial({ color: 0x00ff99 });
           mesh = new THREE.Mesh(geometry, material);
           scene.add(mesh);
+
+          centerModel(geometry);
 
           geometry.computeBoundingBox();
           const box = geometry.boundingBox;
           const size = new THREE.Vector3();
           box.getSize(size);
 
-          centerModel(geometry);
           updateUnits(size);
           updateVolume(geometry);
 
           exportBtn.disabled = false;
-        };
-
-        reader.readAsArrayBuffer(file);
-      } catch (error) {
-        alert('Σφάλμα κατά τη φόρτωση του αρχείου STL.');
-        console.error(error);
-      }
+        } catch (err) {
+          alert('Σφάλμα κατά την ανάγνωση του αρχείου STL.');
+          console.error(err);
+        }
+      };
+      reader.readAsArrayBuffer(file);
     });
 
     unitsSelect.addEventListener('change', () => {
-      if (mesh) {
-        const geometry = mesh.geometry;
-        geometry.computeBoundingBox();
-        const size = new THREE.Vector3();
-        geometry.boundingBox.getSize(size);
-        updateUnits(size);
-        updateVolume(geometry);
-      }
+      if (!mesh) return;
+
+      const geometry = mesh.geometry;
+      geometry.computeBoundingBox();
+      const size = new THREE.Vector3();
+      geometry.boundingBox.getSize(size);
+
+      updateUnits(size);
+      updateVolume(geometry);
     });
 
     function updateUnits(size) {
       const unit = unitsSelect.value;
-      currentScale = unit === 'inch' ? 0.0393701 : 1;
+      currentScale = (unit === 'inch') ? 0.0393701 : 1;
 
       const dims = size.clone().multiplyScalar(currentScale);
       dimensionsLabel.textContent = `${dims.x.toFixed(2)} × ${dims.y.toFixed(2)} × ${dims.z.toFixed(2)} ${unit}`;
     }
 
     function updateVolume(geometry) {
-      let vol = 0;
-      const position = geometry.attributes.position;
-      for (let i = 0; i < position.count; i += 3) {
-        const p1 = new THREE.Vector3().fromBufferAttribute(position, i);
-        const p2 = new THREE.Vector3().fromBufferAttribute(position, i + 1);
-        const p3 = new THREE.Vector3().fromBufferAttribute(position, i + 2);
-        vol += signedVolumeOfTriangle(p1, p2, p3);
+      let volume = 0;
+      const pos = geometry.attributes.position;
+
+      for (let i = 0; i < pos.count; i += 3) {
+        const p1 = new THREE.Vector3().fromBufferAttribute(pos, i);
+        const p2 = new THREE.Vector3().fromBufferAttribute(pos, i + 1);
+        const p3 = new THREE.Vector3().fromBufferAttribute(pos, i + 2);
+
+        volume += signedVolumeOfTriangle(p1, p2, p3);
       }
-      vol = Math.abs(vol) * Math.pow(currentScale, 3);
+
+      volume = Math.abs(volume) * Math.pow(currentScale, 3);
 
       const unit = unitsSelect.value === 'inch' ? 'in' : 'mm';
-      volumeLabel.textContent = `${vol.toFixed(2)} ${unit}³`;
+      volumeLabel.textContent = `${volume.toFixed(2)} ${unit}³`;
 
-      // Υπολογισμός χρόνου σε λεπτά, με βάση mm³/s ταχύτητα εκτύπωσης
-      let volInMm3 = vol;
+      // Εκτιμώμενος χρόνος εκτύπωσης σε λεπτά
+      let volumeInMm3 = volume;
       if (unit === 'in') {
-        volInMm3 = vol / Math.pow(0.0393701, 3); // μετατροπή inch³ -> mm³
+        volumeInMm3 = volume / Math.pow(0.0393701, 3);
       }
 
-      const printSpeed = 50; // mm³/s
-      const estTime = volInMm3 / printSpeed / 60; // λεπτά
-      printTimeLabel.textContent = `${Math.round(estTime)} λεπτά`;
+      const printSpeed = 50; // mm³/s (μπορεί να ρυθμιστεί)
+      const estimatedTime = volumeInMm3 / printSpeed / 60; // σε λεπτά
+      printTimeLabel.textContent = `${Math.round(estimatedTime)} λεπτά`;
     }
 
     function signedVolumeOfTriangle(p1, p2, p3) {
@@ -247,14 +259,22 @@
 
     exportBtn.addEventListener('click', () => {
       if (!mesh) return;
-      // Δείγμα G-code προς εξαγωγή
-      const gcode = `; Sample G-code\nG28 ; Home\nG1 Z0.2 F3000\n; ...`;
+
+      // Παράδειγμα G-code, μπορείς να αντικαταστήσεις με πραγματικό
+      const gcode = `
+; Sample G-code generated by STL Viewer
+G28 ; Home all axes
+G1 Z0.2 F3000 ; Move to start height
+; Add your G-code commands here...
+      `.trim();
+
       const blob = new Blob([gcode], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'exported.gcode';
-      link.click();
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'exported.gcode';
+      a.click();
+      URL.revokeObjectURL(url);
     });
   </script>
 </body>
