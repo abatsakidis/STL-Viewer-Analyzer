@@ -98,10 +98,9 @@
   <div id="viewer"></div>
 
 <script type="module">
-	import * as THREE from 'https://cdn.skypack.dev/three@0.160.0?min';
-	import { OrbitControls } from 'https://cdn.skypack.dev/three@0.160.0/examples/jsm/controls/OrbitControls.js?min';
-	import { STLLoader } from 'https://cdn.skypack.dev/three@0.160.0/examples/jsm/loaders/STLLoader.js?min';
-
+	import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+	import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+	import { STLLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/STLLoader.js';
 
     const viewer = document.getElementById('viewer');
     const fileInput = document.getElementById('stlFile');
